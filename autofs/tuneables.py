@@ -1,0 +1,2 @@
+# 10 MB == ~1 sec. on 100MBps
+PARTIAL_READ_FILESIZE = 1024 * 1024 * 10

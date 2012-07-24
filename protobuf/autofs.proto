@@ -1,0 +1,64 @@
+package autofs;
+
+enum MessageType {
+    JOIN_CLUSTER = 1;
+    GET_CLUSTER_INFO = 2;
+    BUNDLE_INFO = 3;
+    CLUSTER_INFO = 4;
+
+    PEER_ANNOUNCE = 5;
+    GET_BUNDLE_INDEX = 6;
+    GET_BLOCKS = 7;
+    BLOCKS_DATA = 8;
+    REGISTER_UPDATE_NOTIFY = 9;
+}
+
+message JoinCluster {
+    required string peer_id = 1;
+    required string version = 2;
+    required uint32 proto_version = 3;
+}
+
+message BundleInfo {
+    required string bundle_id = 1;
+    required int32 latest_version = 2;
+}
+
+message ClusterInfo {
+    required string cluster_id = 1;
+    // Bundle index
+    repeated BundleInfo bundles = 2;
+}
+
+message PeerAnnounce {
+    required string peer_id = 1;
+    required string cluster_id = 2;
+    required string version = 3;
+    required uint32 proto_version = 4;
+}
+
+message GetBundleIndex {
+    required string bundle_id = 1;
+}
+
+message GetBlocks {
+    repeated string block_ids = 1;
+}
+
+message BlocksData {
+    repeated string block_ids = 1;
+    // block datas follow in order
+}
+
+message RegisterUpdateNotify {
+    repeated string bundle_ids = 1;
+}
+
+message UpdateNotification {
+    message UpdateInfo {
+        required string bundle_id = 1;
+        required uint32 latest_version = 2;
+    }
+
+    repeated UpdateInfo updates = 1;
+}

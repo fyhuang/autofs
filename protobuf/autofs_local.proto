@@ -1,0 +1,76 @@
+package autofs_local;
+
+enum MessageType {
+    REQ_STAT = 1;
+    REQ_LISTDIR = 2;
+    REQ_READ = 3;
+
+    RESP_ERROR = 0;
+
+    RESP_STAT = 101;
+    RESP_LISTDIR = 102;
+    RESP_READ = 103;
+
+
+    REQ_ADM_ADDFILE = 64;
+    RESP_ADM_ADDFILE = 164;
+}
+
+enum ErrorCode {
+    ERR_NONE = 0;
+    ERR_NOENT = 1;
+    ERR_BADPACKET = 2;
+    ERR_INVALID_OP = 3;
+
+    ERR_UNKNOWN = 255;
+}
+
+
+message ReqStat {
+    required string filepath = 1;
+}
+
+message ReqListdir {
+    required string dirpath = 1;
+}
+
+message ReqRead {
+    required string filepath = 1;
+    required uint64 offset = 2;
+    required uint64 length = 3;
+}
+
+
+message RespStat {
+    required int32 ftype = 1;
+    required uint32 perms = 2;
+    required uint32 inode = 3;
+    required uint64 size = 4;
+    required fixed64 ctime_utc = 5;
+}
+
+message RespListdir {
+    message ListdirEntry {
+        required string filename = 1;
+        required RespStat stat = 2;
+    }
+
+    repeated ListdirEntry entries = 1;
+}
+
+message RespRead {
+    required bytes data = 1;
+}
+
+
+////////////////////////////////
+// Admin commands
+
+message AReqAddFile {
+    required string ext_filepath = 1;
+    required string destdir = 2;
+}
+
+message ARespAddFile {
+    required uint32 fid = 1;
+}
