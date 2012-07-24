@@ -6,7 +6,8 @@ from gevent import server, socket, coros, queue, event
 import proto.autofs_pb2 as pb2
 from autofs import userconfig, remote
 
-HEADER_FMT = "<HHL"
+# TODO: need larger size for packets
+HEADER_FMT = "<HLL"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 class PeerConnection(object):
@@ -62,16 +63,17 @@ class PeerConnection(object):
                     pbuf_blob = self.sock.recv(pbuf_len, socket.MSG_WAITALL)
                     # TODO gevent.sleep(0)
                     data_blob = self.sock.recv(binary_len, socket.MSG_WAITALL)
+                print(len(pbuf_blob), type(data_blob))
 
                 # Update peer info
                 if header[remote.H_MTYPE] == pb2.PEER_ANNOUNCE:
                     msg = pb2.PeerAnnounce()
                     msg.ParseFromString(pbuf_blob)
-                    self.peer_id = peer_id
+                    self.peer_id = msg.peer_id
                 elif header[remote.H_MTYPE] == pb2.JOIN_CLUSTER:
-                    msg = pb2.ClusterInfo()
+                    msg = pb2.JoinCluster()
                     msg.ParseFromString(pbuf_blob)
-                    self.peer_id = peer_id
+                    self.peer_id = msg.peer_id
 
                 if not remote.handle_packet(self, header, pbuf_blob, data_blob):
                     with self.results_lock:
@@ -84,6 +86,9 @@ class PeerConnection(object):
         return self.greenlets
 
     def send(self, mtype, msg, data=None):
+        if __debug__:
+            # Check for required fields
+            s = msg.SerializeToString()
         self.in_queue.put((mtype, msg, data))
         gevent.sleep(0)
 

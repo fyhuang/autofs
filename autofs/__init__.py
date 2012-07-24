@@ -6,7 +6,7 @@ from gevent_zeromq import zmq
 import gevent
 
 from autofs import userconfig, local, instance, peer_responder
-from autofs import cmd_bundle, cmd_join
+from autofs.cmd import cmd_bundle, cmd_join, cmd_list
 
 def main():
     if len(sys.argv) < 2:
@@ -24,13 +24,7 @@ Commands:
 
     gevent.signal(signal.SIGQUIT, gevent.shutdown)
 
-    if command == 'init':
-        if not os.path.isdir(instance_path):
-            instance.Instance.create(instance_path)
-        else:
-            print("Instance already exists at {}".format(instance_path))
-
-    elif command == 'serve':
+    if command == 'serve':
         inst = instance.Instance.load(instance_path)
 
         print("0MQ version: " + zmq.zmq_version())
@@ -49,6 +43,14 @@ Commands:
         pf = peer_responder.find_peers(inst)
         glets = [ls, pf]
         gevent.joinall(glets)
+
+    # "Offline" commands
+
+    elif command == 'init':
+        if not os.path.isdir(instance_path):
+            instance.Instance.create(instance_path)
+        else:
+            print("Instance already exists at {}".format(instance_path))
 
     elif command == 'join':
         if len(command_args) == 0:
@@ -72,6 +74,10 @@ Commands:
 
         inst.save()
         print("Done")
+
+    elif sys.argv[1] == 'list':
+        inst = instance.Instance.load(instance_path)
+        cmd_list.list_items(inst)
 
 if __name__ == "__main__":
     main()

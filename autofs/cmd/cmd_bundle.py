@@ -1,6 +1,6 @@
 import os.path
 
-import fsindex
+from autofs import fsindex
 
 
 def bundle(inst, dirpath):

@@ -24,7 +24,6 @@ class DirEntry(object):
         self.ctime = datetime.utcnow()
         self.items = {}
         
-
 class VersionedIndex(object):
     def __init__(self, version, date):
         self.version = version
@@ -47,6 +46,7 @@ class VersionedIndex(object):
                 return None
         return curr
 
+
 class Bundle(object):
     def __init__(self, bundle_id, name):
         self.bundle_id = bundle_id
@@ -62,9 +62,16 @@ class Bundle(object):
 
     """Generates a new version of the index and returns it"""
     def newindex(self):
-        ix = VersionedIndex(len(self.indexes), datetime.utcnow())
+        ix = VersionedIndex(self.latest().version + 1, datetime.utcnow())
         self.indexes.append(ix)
         return ix
+
+    """Returns a copy of this bundle with only the latest
+    index (and the starting empty index)"""
+    def minimal_copy(self):
+        b = Bundle(self.bundle_id, self.name)
+        b.indexes.append(self.latest())
+        return b
 
 class FilesystemIndex(object):
     def __init__(self):
@@ -83,3 +90,9 @@ class FilesystemIndex(object):
         bndid = uuid.uuid1()
         self.bundles[bndid.hex] = Bundle(bndid.hex, bname)
         return self.bundles[bndid.hex]
+
+    def minimal_copy(self):
+        fi = FilesystemIndex()
+        for bid,b in self.bundles.items():
+            fi.bundles[bid] = b.minimal_copy()
+        return fi
