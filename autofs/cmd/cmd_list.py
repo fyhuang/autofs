@@ -6,6 +6,8 @@ def list_items(inst):
     def list_recur(ix, prefix):
         for name, item in ix.items.items():
             print("{} {}".format(item.ftype, prefix + name))
+            if item.ftype == fsindex.FILE:
+                print(item.datapair)
             if item.ftype == fsindex.DIR:
                 list_recur(item, prefix + name + '/')
 

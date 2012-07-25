@@ -16,6 +16,7 @@ class PeerConnection(object):
         self.sock = sock
         self.remote_addr = addr
         self.peer_id = None
+        self.peer_announce_sent = False
 
         self.in_queue = queue.Queue()
 
@@ -24,6 +25,17 @@ class PeerConnection(object):
         self.results = []
 
         self.greelets = None
+
+    def recv_exact(self, count):
+        data = bytearray()
+        while len(data) < count:
+            to_recv = min(8192, count-len(data))
+            new_data = self.sock.recv(to_recv)
+            if len(new_data) == 0:
+                return b''
+            print("Received {} bytes".format(len(new_data)))
+            data.extend(new_data)
+        return bytes(data)
 
     def handle(self):
         def sender():
@@ -34,12 +46,13 @@ class PeerConnection(object):
                 if mtrip[2] is not None:
                     binary_len = len(mtrip[2])
                 mpkt = mtrip[1].SerializeToString()
+                packet_len = len(mpkt) + binary_len
 
-                self.sock.send(struct.pack(HEADER_FMT, mtrip[0], binary_len, len(mpkt) + binary_len))
-                self.sock.send(mpkt)
+                self.sock.sendall(struct.pack(HEADER_FMT, mtrip[0], binary_len, len(mpkt) + binary_len))
+                self.sock.sendall(mpkt)
                 if mtrip[2] is not None:
-                    self.sock.send(mtrip[2])
-                print("Sent {}".format(mtrip[0]))
+                    self.sock.sendall(mtrip[2])
+                print("Outgoing {}".format((mtrip[0], binary_len, packet_len)))
 
         def receiver():
             while True:
@@ -53,16 +66,18 @@ class PeerConnection(object):
                 except:
                     print(len(header))
                     raise
-                print(header)
+                print("Incoming: {}".format(header))
                 if header[remote.H_BINARYLEN] == 0:
                     pbuf_blob = self.sock.recv(header[remote.H_LEN], socket.MSG_WAITALL)
                     data_blob = None
                 else:
                     binary_len = header[remote.H_BINARYLEN]
                     pbuf_len = header[remote.H_LEN] - binary_len
+                    print("pbuf_len: {}".format(pbuf_len))
                     pbuf_blob = self.sock.recv(pbuf_len, socket.MSG_WAITALL)
+                    print("received pbuf")
                     # TODO gevent.sleep(0)
-                    data_blob = self.sock.recv(binary_len, socket.MSG_WAITALL)
+                    data_blob = self.recv_exact(binary_len)
                 print(len(pbuf_blob), type(data_blob))
 
                 # Update peer info
@@ -70,10 +85,12 @@ class PeerConnection(object):
                     msg = pb2.PeerAnnounce()
                     msg.ParseFromString(pbuf_blob)
                     self.peer_id = msg.peer_id
+                    print("Updated remote peer_id {}".format(self.peer_id))
                 elif header[remote.H_MTYPE] == pb2.JOIN_CLUSTER:
                     msg = pb2.JoinCluster()
                     msg.ParseFromString(pbuf_blob)
                     self.peer_id = msg.peer_id
+                    print("Updated remote peer_id {}".format(self.peer_id))
 
                 if not remote.handle_packet(self, header, pbuf_blob, data_blob):
                     with self.results_lock:
@@ -81,7 +98,7 @@ class PeerConnection(object):
                     self.results_evt.set()
                 gevent.sleep(0)
 
-        print("Connection from {}".format(self.remote_addr))
+        print("Connected to {}".format(self.remote_addr))
         self.greenlets = [gevent.spawn(sender), gevent.spawn(receiver)]
         return self.greenlets
 
@@ -141,6 +158,8 @@ def connect(inst, addr):
     with connections_lock:
         connections[addr] = conn
 
+    if inst is not None:
+        remote.send_peer_announce(conn)
     return conn, conn.handle()
 
 def find_peers(inst):

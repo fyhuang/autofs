@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
 
     // TODO: just hardcode the needed arguments to FUSE
     // TODO: pass -s option (single-threaded)
-    int fuse_argc = 3;
-    char *fuse_argv[] = {argv[0], "-s", argv[2]};
+    int fuse_argc = 4;
+    char *fuse_argv[] = {argv[0], "-s", "-d", argv[2]};
     return fuse_main(fuse_argc, fuse_argv, &nofs_oper, NULL);
 }

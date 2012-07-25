@@ -42,3 +42,7 @@ class FileStore(object):
         with open(filepath, 'rb') as f:
             f.seek(off)
             return f.read(size)
+
+    def blockdata(self, block_id):
+        with open(self.path_to(block_id), 'rb') as f:
+            return f.read()

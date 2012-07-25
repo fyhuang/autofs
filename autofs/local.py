@@ -3,8 +3,7 @@ import time
 from gevent_zeromq import zmq
 import gevent
 
-import fsindex
-import debug
+from autofs import fsindex, debug, remote
 
 import proto.autofs_local_pb2 as pb2
 
@@ -89,7 +88,7 @@ def handle_listdir(pkt, inst):
     if pkt.dirpath == '/':
         resp = pb2.RespListdir()
         for bundle_id, bundle in fi.bundles.iteritems():
-            entry = resp.entry.add()
+            entry = resp.entries.add()
             entry.filename = bundle_id
             entry.stat.ftype = stat.S_IFDIR
             entry.stat.perms = 0755
@@ -111,7 +110,7 @@ def handle_listdir(pkt, inst):
 
     resp = pb2.RespListdir()
     for k,e in fentry.items.items():
-        entry = resp.entry.add()
+        entry = resp.entries.add()
         entry.filename = k
         entry.stat.CopyFrom(stat_from_entry(e)[1])
     return pb2.RESP_LISTDIR, resp
@@ -133,6 +132,9 @@ def handle_read(pkt, inst):
     if inst.fs.has(fentry.datapair):
         resp.data = inst.fs.read(fentry.datapair, pkt.length, pkt.offset)
     else:
-        resp.data = remote.read(fentry.datapair, pkt.length, pkt.offset)
+        data = remote.read(fentry, pkt.length, pkt.offset)
+        if data is None:
+            return pb2.ERR_UNKNOWN
+        resp.data = data
 
     return pb2.RESP_READ, resp

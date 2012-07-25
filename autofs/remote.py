@@ -9,17 +9,21 @@ H_BINARYLEN = 1
 H_LEN = 2
 
 def read(fentry, length, offset):
+    from autofs import peer_responder
     conns = peer_responder.get_connections()
     if len(conns) == 0:
+        print("No remote connections!")
         return None
-    c = conns[0]
+    c = conns.values()[0]
 
     if fentry.size < tuneables.PARTIAL_READ_FILESIZE:
         msg = pb2.GetBlocks()
         msg.block_ids.append(fentry.datapair[1])
+        print("Reading {}".format(fentry.datapair[1]))
         c.send(pb2.GET_BLOCKS, msg)
         result = c.get_result(pb2.BLOCKS_DATA)
-        return result[2]
+        return result[2][offset:offset+length]
+        # TODO: cache/store the result locally
     else:
         assert False
         return None
@@ -35,13 +39,31 @@ def send_cluster_info(conn):
     index_blob = pickle.dumps(conn.inst.fi.minimal_copy())
     conn.send(pb2.CLUSTER_INFO, msg, index_blob)
 
-def handle_packet(conn, header, pbuf_blob, data_blob):
-    if header[H_MTYPE] == pb2.JOIN_CLUSTER:
-        send_cluster_info(conn)
-
+def send_peer_announce(conn):
+    if not conn.peer_announce_sent:
         msg = pb2.PeerAnnounce()
         msg.peer_id = userconfig.get_user_config()['peerid']
         msg.version = "0.1"
         msg.proto_version = 1
         msg.cluster_id = conn.inst.static_info['cluster_id']
         conn.send(pb2.PEER_ANNOUNCE, msg)
+        
+        conn.peer_announce_sent = True
+
+def handle_packet(conn, header, pbuf_blob, data_blob):
+    if header[H_MTYPE] == pb2.PEER_ANNOUNCE:
+        send_peer_announce(conn)
+
+    elif header[H_MTYPE] == pb2.JOIN_CLUSTER:
+        send_cluster_info(conn)
+        send_peer_announce(conn)
+    
+    elif header[H_MTYPE] == pb2.GET_BLOCKS:
+        get_blocks = pb2.GetBlocks()
+        get_blocks.ParseFromString(pbuf_blob)
+        resp = pb2.BlocksData()
+        data = bytearray()
+        for b in get_blocks.block_ids:
+            resp.block_ids.append(b)
+            data.extend(conn.inst.fs.blockdata(b))
+        conn.send(pb2.BLOCKS_DATA, resp, data)
