@@ -7,7 +7,7 @@ enum MessageType {
     CLUSTER_INFO = 4;
 
     PEER_ANNOUNCE = 5;
-    GET_BUNDLE_INDEX = 6;
+    GET_BUNDLE_INDEXES = 6;
     GET_BLOCKS = 7;
     BLOCKS_DATA = 8;
     REGISTER_UPDATE_NOTIFY = 9;
@@ -24,6 +24,9 @@ message BundleInfo {
     required int32 latest_version = 2;
 }
 
+message GetClusterInfo {
+}
+
 message ClusterInfo {
     required string cluster_id = 1;
     // Bundle index
@@ -37,8 +40,8 @@ message PeerAnnounce {
     required uint32 proto_version = 4;
 }
 
-message GetBundleIndex {
-    required string bundle_id = 1;
+message GetBundleIndexes {
+    repeated string bundle_id = 1;
 }
 
 message GetBlocks {

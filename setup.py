@@ -16,6 +16,5 @@ setup(name='autofs',
 
       install_requires=[
           'protobuf',
-          'pyzmq',
           ],
       )

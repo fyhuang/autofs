@@ -7,10 +7,15 @@ import collections
 from autofs import fsindex, filestore
 
 FI_PATH = 'index.pkl'
-FS_PATH = 'store'
+FS_PATH = 'store.pkl'
+FS_DIR = 'store'
 STATIC_INFO_PATH = "static_info"
 PEER_INFO_PATH = "peer_info"
 
+
+def pickle_load(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
 
 class PeerInfo(object):
     def __init__(self, peerid):
@@ -28,7 +33,7 @@ class Instance(object):
     def __init__(self, dirpath):
         self.dirpath = dirpath
         self.fi = fsindex.FilesystemIndex()
-        self.fs = filestore.FileStore(self.path_to(FS_PATH))
+        self.fs = filestore.FileStore(self.path_to(FS_DIR))
         self.static_info = {}
         self.peer_info = {}
 
@@ -43,11 +48,10 @@ class Instance(object):
     @staticmethod
     def create(dirpath, static_info=None):
         print("Creating instance at {}".format(dirpath))
-        os.makedirs(dirpath)
+        assert os.path.isdir(dirpath)
 
         inst = Instance(dirpath)
-        inst.fi = fsindex.FilesystemIndex()
-        filestore.init(inst.path_to(FS_PATH))
+        filestore.init(inst.path_to(FS_DIR))
 
         # Generate a UUID
         if static_info is None:
@@ -61,8 +65,8 @@ class Instance(object):
     def load(dirpath):
         print("Loading instance at {}".format(dirpath))
         inst = Instance(dirpath)
-        inst.fi = fsindex.FilesystemIndex.load(inst.path_to(FI_PATH))
-        inst.fs = filestore.FileStore(inst.path_to(FS_PATH))
+        inst.fi = pickle_load(inst.path_to(FI_PATH))
+        inst.fs = pickle_load(inst.path_to(FS_PATH))
         with open(inst.path_to(STATIC_INFO_PATH), "rb") as f:
             inst.static_info = pickle.load(f)
         with open(inst.path_to(PEER_INFO_PATH), "rb") as f:
@@ -72,7 +76,8 @@ class Instance(object):
 
     def save(self):
         print("Saving instance to {}".format(self.dirpath))
-        self.fi.save(os.path.join(self.dirpath, FI_PATH))
+        self.fi.save(self.path_to(FI_PATH))
+        self.fs.save(self.path_to(FS_PATH))
         with open(self.path_to(STATIC_INFO_PATH), "wb") as f:
             pickle.dump(self.static_info, f)
         with open(self.path_to(PEER_INFO_PATH), "wb") as f:

@@ -1,4 +1,5 @@
-import proto.autofs_local_pb2 as pb2
+import autofs.protobuf.autofs_pb2 as pb2
+import autofs.protobuf.autofs_local_pb2 as lpb2
 
 
 def msg_type_str(mt):
@@ -6,18 +7,29 @@ def msg_type_str(mt):
         if v.number == mt:
             return v.name
     return 'unknown'
+def msg_type_str_local(mt):
+    for v in lpb2._MESSAGETYPE.values:
+        if v.number == mt:
+            return v.name
+    return 'unknown'
 
 
-def err_code_str(ec):
-    for v in pb2._ERRORCODE.values:
+def err_code_str_local(ec):
+    for v in lpb2._ERRORCODE.values:
         if v.number == ec:
             return v.name
     return 'unknown'
 
-to_hex = lambda x: "".join([hex(ord(c))[2:].zfill(2) for c in x])
+
+def header_str(header):
+    return "{} (len {}, datalen {})".format(
+        msg_type_str(header[0]),
+        header[2],
+        header[1]
+        )
 
 
-def print_packet(pkt):
+def print_packet(packet_tup):
     mtype = ord(pkt[0])
     mpkt = pkt[1:]
     if mtype == pb2.REQ_STAT:

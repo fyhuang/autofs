@@ -1,23 +1,59 @@
 import struct
+import collections
 
 import gevent
-from gevent import server, socket, coros, queue, event
+from gevent import server, coros, queue, event
 
-import proto.autofs_pb2 as pb2
-from autofs import userconfig, remote
+import autofs.protobuf.autofs_pb2 as pb2
+from autofs import userconfig, debug
 
 # TODO: need larger size for packets
 HEADER_FMT = "<HLL"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
+H_MTYPE = 0
+H_BINARYLEN = 1
+H_LEN = 2
+
+mtype_to_pb2 = [
+        None,
+        pb2.JoinCluster,
+        pb2.GetClusterInfo,
+        pb2.BundleInfo,
+        pb2.ClusterInfo,
+        pb2.PeerAnnounce,
+        pb2.GetBundleIndexes,
+        pb2.GetBlocks,
+        pb2.BlocksData,
+        pb2.RegisterUpdateNotify,
+        ]
+
+packet_tuple = collections.namedtuple('packet_tuple', ['header', 'message', 'data'])
+def get_packet_tuple(header, pbuf_bytes, data_bytes):
+    mtype = header[H_MTYPE]
+    if mtype > 0 and mtype < len(mtype_to_pb2):
+        pbuf = mtype_to_pb2[mtype]()
+        pbuf.ParseFromString(pbuf_bytes)
+    else:
+        pbuf = pbuf_bytes
+        raise NotImplementedError()
+
+    return packet_tuple(header, pbuf, data_bytes)
+
 class PeerConnection(object):
-    def __init__(self, inst, sock, addr):
+    def __init__(self, inst, sock, addr, handler):
+        """handler returns True to hide from results"""
         self.inst = inst
         self.sock = sock
         self.remote_addr = addr
+        self.handler = handler
+
+        # Peer info
         self.peer_id = None
         self.peer_announce_sent = False
 
+
+        # Greenlets
         self.in_queue = queue.Queue()
 
         self.results_lock = coros.Semaphore()
@@ -52,11 +88,11 @@ class PeerConnection(object):
                 self.sock.sendall(mpkt)
                 if mtrip[2] is not None:
                     self.sock.sendall(mtrip[2])
-                print("Outgoing {}".format((mtrip[0], binary_len, packet_len)))
+                print("Outgoing: {}".format(debug.msg_type_str(mtrip[0])))
 
         def receiver():
             while True:
-                header_blob = self.sock.recv(HEADER_SIZE, socket.MSG_WAITALL)
+                header_blob = self.sock.recv_exact(HEADER_SIZE)
                 if len(header_blob) == 0:
                     print("{} disconnected".format(self.remote_addr))
                     # TODO shutdown sender too
@@ -64,38 +100,36 @@ class PeerConnection(object):
                 try:
                     header = struct.unpack(HEADER_FMT, header_blob)
                 except:
-                    print(len(header))
+                    print("Couldn't parse header: len {}".format(len(header)))
                     raise
-                print("Incoming: {}".format(header))
-                if header[remote.H_BINARYLEN] == 0:
-                    pbuf_blob = self.sock.recv(header[remote.H_LEN], socket.MSG_WAITALL)
+
+                print("Incoming: {}".format(debug.header_str(header)))
+                if header[H_BINARYLEN] == 0:
+                    pbuf_blob = self.sock.recv_exact(header[H_LEN])
                     data_blob = None
                 else:
-                    binary_len = header[remote.H_BINARYLEN]
-                    pbuf_len = header[remote.H_LEN] - binary_len
+                    binary_len = header[H_BINARYLEN]
+                    pbuf_len = header[H_LEN] - binary_len
                     print("pbuf_len: {}".format(pbuf_len))
-                    pbuf_blob = self.sock.recv(pbuf_len, socket.MSG_WAITALL)
+                    pbuf_blob = self.sock.recv_exact(pbuf_len)
                     print("received pbuf")
                     # TODO gevent.sleep(0)
                     data_blob = self.recv_exact(binary_len)
                 print(len(pbuf_blob), type(data_blob))
 
+                packet = get_packet_tuple(header, pbuf_blob, data_blob)
+
                 # Update peer info
-                if header[remote.H_MTYPE] == pb2.PEER_ANNOUNCE:
-                    msg = pb2.PeerAnnounce()
-                    msg.ParseFromString(pbuf_blob)
-                    self.peer_id = msg.peer_id
-                    print("Updated remote peer_id {}".format(self.peer_id))
-                elif header[remote.H_MTYPE] == pb2.JOIN_CLUSTER:
-                    msg = pb2.JoinCluster()
-                    msg.ParseFromString(pbuf_blob)
-                    self.peer_id = msg.peer_id
+                if header[H_MTYPE] == pb2.PEER_ANNOUNCE or \
+                        header[H_MTYPE] == pb2.JOIN_CLUSTER:
+                    self.peer_id = packet.message.peer_id
                     print("Updated remote peer_id {}".format(self.peer_id))
 
-                if not remote.handle_packet(self, header, pbuf_blob, data_blob):
+                if self.handler is None or not self.handler(self, packet):
                     with self.results_lock:
-                        self.results.append((header, pbuf_blob, data_blob))
+                        self.results.append(packet)
                     self.results_evt.set()
+
                 gevent.sleep(0)
 
         print("Connected to {}".format(self.remote_addr))
@@ -140,8 +174,12 @@ connections_lock = coros.Semaphore()
 connections = {}
 
 def start_server(inst):
+    assert inst is not None
+
+    import remote
+
     def _handle(sock, addr):
-        conn = PeerConnection(inst, sock, addr)
+        conn = PeerConnection(inst, sock, addr, remote.handle_packet)
         with connections_lock:
             connections[addr] = conn
         conn.handle()
@@ -154,7 +192,7 @@ def start_server(inst):
 
 def connect(inst, addr):
     sock = socket.create_connection(addr)
-    conn = PeerConnection(inst, sock, addr)
+    conn = PeerConnection(inst, sock, addr, None)
     with connections_lock:
         connections[addr] = conn
 

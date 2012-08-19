@@ -4,7 +4,6 @@
 #ifdef DEBUG
 #define DBPRINTF(...) _debug_printf(__func__, __LINE__, __VA_ARGS__)
 #define DBERROR(errcode) DBPRINTF("%s returning %d\n", __func__, errcode); return -errcode
-#define DBZMQERR(what) _debug_printf(__func__, __LINE__, "%s: %s\n", what, zmq_strerror(zmq_errno()))
 #else
 #define DBPRINTF(...) do{}while(false)
 #endif

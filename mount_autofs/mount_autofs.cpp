@@ -11,20 +11,36 @@
 
 #include <limits.h>
 #include <syslog.h>
-#include <pthread.h>
 
-#include <zmq.h>
 
 #include "logging.h"
 #include "network.h"
 
+struct shared_data {
+    int sock;
+};
+
+shared_data *get_sd() {
+    return (shared_data*)fuse_get_context()->private_data;
+}
+
 // FUSE functions
 static void *autofs_init(struct fuse_conn_info *conn) {
-    // Connect
-    connect("tcp://localhost:54321");
+    shared_data *sd = new shared_data();
+    sd->sock = connect("localhost:54321");
+    if (sd->sock < 0) {
+        fprintf(stderr, "Couldn't connect!\n");
+        exit(1);
+    }
 
     DBPRINTF("Connected!\n");
-    return NULL;
+    return sd;
+}
+
+static void autofs_destroy(void *p_sd) {
+    shared_data *sd = (shared_data*)p_sd;
+    close(sd->sock);
+    delete sd;
 }
 
 static int autofs_stat(const char *path, struct stat *stbuf) {
@@ -32,11 +48,13 @@ static int autofs_stat(const char *path, struct stat *stbuf) {
     stbuf->st_uid = geteuid();
     stbuf->st_gid = getegid();
 
+    shared_data *sd = get_sd();
+
     ReqStat req_stat;
     req_stat.set_filepath(path);
 
     // Send request
-    if (send_packet(REQ_STAT, &req_stat) < 0) {
+    if (send_packet(sd->sock, REQ_STAT, &req_stat) < 0) {
         return -EIO;
     }
 
@@ -44,26 +62,27 @@ static int autofs_stat(const char *path, struct stat *stbuf) {
 
     // Get response
     RespStat sr;
-    if (recv_packet(&sr) != ERR_NONE) {
+    ErrorCode afs_err = recv_packet(sd->sock, &sr);
+    if (afs_err != ERR_NONE) {
         return -ENOENT;
     }
 
-    time_t ctime_utc = sr.ctime_utc();
-    struct tm *tm_loc = localtime(&ctime_utc);
-    time_t ctime_local = mktime(tm_loc);
-    stbuf->st_ctime = ctime_local;
-    stbuf->st_mtime = ctime_local;
-    stbuf->st_atime = ctime_local;
+    time_t mtime_utc = sr.mtime_utc();
+    struct tm *tm_loc = localtime(&mtime_utc);
+    time_t mtime_local = mktime(tm_loc);
+    stbuf->st_ctime = mtime_local;
+    stbuf->st_mtime = mtime_local;
+    stbuf->st_atime = mtime_local;
 
     if (sr.ftype() & S_IFDIR) {
-        stbuf->st_mode = S_IFDIR | 0755;
+        stbuf->st_mode = S_IFDIR | sr.perms();
         stbuf->st_nlink = sr.size();
         stbuf->st_ino = sr.inode();
         DBPRINTF("result dir\n");
         return 0;
     }
     else if (sr.ftype() & S_IFREG) {
-        stbuf->st_mode = S_IFREG | 0644;
+        stbuf->st_mode = S_IFREG | sr.perms();
         stbuf->st_nlink = 1;
         stbuf->st_size = sr.size();
         stbuf->st_ino = sr.inode();
@@ -78,10 +97,9 @@ static int autofs_stat(const char *path, struct stat *stbuf) {
 }
 
 
-// FUSE
-static int nofs_getattr(const char *path, struct stat *stbuf)
+static int autofs_getattr(const char *path, struct stat *stbuf)
 {
-    DBPRINTF("nofs_getattr %s\n", path);
+    DBPRINTF("autofs_getattr %s\n", path);
 
     if (strcmp(path, "/") == 0) {
         stbuf->st_uid = geteuid();
@@ -94,17 +112,19 @@ static int nofs_getattr(const char *path, struct stat *stbuf)
     return autofs_stat(path, stbuf);
 }
 
-static int nofs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+static int autofs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                         off_t offset, struct fuse_file_info *fi)
 {
-    DBPRINTF("nofs_readdir %s\n", path);
+    DBPRINTF("autofs_readdir %s\n", path);
+
+    shared_data *sd = get_sd();
 
     ReqListdir req_listdir;
     req_listdir.set_dirpath(path);
-    send_packet(REQ_LISTDIR, &req_listdir);
+    send_packet(sd->sock, REQ_LISTDIR, &req_listdir);
 
     RespListdir rl;
-    if (recv_packet(&rl) != ERR_NONE) {
+    if (recv_packet(sd->sock, &rl) != ERR_NONE) {
         return -ENOENT;
     }
 
@@ -120,7 +140,7 @@ static int nofs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return 0;
 }
 
-static int nofs_open(const char *path, struct fuse_file_info *fi)
+static int autofs_open(const char *path, struct fuse_file_info *fi)
 {
     DBPRINTF("open %s (%X)\n", path, fi->flags);
 
@@ -135,54 +155,121 @@ static int nofs_open(const char *path, struct fuse_file_info *fi)
         DBPRINTF("opened read only\n");
     }
     else {
-        return -EACCES;
+        DBPRINTF("opened write\n");
     }
 
     return 0;
 }
 
-static int nofs_read(const char *path, char *buf, size_t size, off_t offset,
+static int autofs_read(const char *path, char *buf, size_t size, off_t offset,
                      struct fuse_file_info *fi)
 {
     DBPRINTF("read %s\n", path);
 
-    // TODO: can the following be taken out?
-    struct stat st;
-    int err = autofs_stat(path, &st);
-    if (err != 0) return err;
+    shared_data *sd = get_sd();
 
     // TODO (max size is 1 MB)
-    if (size > 1024*1024) {
-        size = 1024*1024;
+    if (size > 1024*1024*512) {
+        fprintf(stderr, "Read is too big!\n");
+        exit(1);
     }
 
     ReqRead req_read;
     req_read.set_filepath(path);
     req_read.set_offset(offset);
     req_read.set_length(size);
-    send_packet(REQ_READ, &req_read);
+    send_packet(sd->sock, REQ_READ, &req_read);
 
-    RespRead rr;
-    if (recv_packet(&rr) != ERR_NONE) {
+    databuf dbuf;
+    if (recv_packet(sd->sock, NULL, &dbuf) != ERR_NONE) {
         return -ENOENT;
     }
 
-    const std::string &data = rr.data();
-    size_t real_size = data.size();
-    memcpy(buf, &data[0], real_size);
+    // TODO: keep reading until full
+    size_t real_size = dbuf.size();
+    memcpy(buf, &dbuf[0], real_size);
     return real_size;
 }
 
 
-static struct fuse_operations nofs_oper;
+
+static int autofs_write(const char *path, const char *buf, size_t size, off_t off,
+        struct fuse_file_info *fi)
+{
+    DBPRINTF("write(%lu) %s\n", size, path);
+
+    // TODO (max size is 1 MB)
+    if (size > 1024*1024*512) {
+        fprintf(stderr, "Write is too big!\n");
+        exit(1);
+    }
+
+    shared_data *sd = get_sd();
+
+    ReqWrite req_write;
+    req_write.set_filepath(path);
+    req_write.set_offset(off);
+    send_packet(sd->sock, REQ_WRITE, &req_write, (uint8_t*)buf, size);
+
+    if (recv_packet(sd->sock, NULL, NULL) != ERR_NONE) {
+        return -EIO;
+    }
+    return size;
+}
+
+static int autofs_mknod(const char *path, mode_t mode, dev_t dev)
+{
+    DBPRINTF("mknod %s\n", path);
+
+    if (!(mode & S_IFREG)) {
+        return -EINVAL;
+    }
+
+    shared_data *sd = get_sd();
+
+    ReqMknod req_mknod;
+    req_mknod.set_filepath(path);
+    send_packet(sd->sock, REQ_MKNOD, &req_mknod);
+
+    if (recv_packet(sd->sock, NULL, NULL) != ERR_NONE) {
+        return -EIO;
+    }
+    return 0;
+}
+
+static int autofs_truncate(const char *path, off_t new_size)
+{
+    DBPRINTF("truncate %s\n", path);
+
+    if (new_size < 0) return -EINVAL;
+    shared_data *sd = get_sd();
+
+    ReqTruncate req_truncate;
+    req_truncate.set_filepath(path);
+    req_truncate.set_newlength(new_size);
+    send_packet(sd->sock, REQ_TRUNCATE, &req_truncate);
+
+    if (recv_packet(sd->sock, NULL, NULL) != ERR_NONE) {
+        return -EIO;
+    }
+    return 0;
+}
+
+
+static struct fuse_operations autofs_oper;
 int main(int argc, char *argv[])
 {
     // Setup FUSE pointers
-    nofs_oper.init = autofs_init;
-    nofs_oper.getattr = nofs_getattr;
-    nofs_oper.readdir = nofs_readdir;
-    nofs_oper.open = nofs_open;
-    nofs_oper.read = nofs_read;
+    autofs_oper.init = autofs_init;
+    autofs_oper.destroy = autofs_destroy;
+    autofs_oper.getattr = autofs_getattr;
+    autofs_oper.readdir = autofs_readdir;
+    autofs_oper.open = autofs_open;
+    autofs_oper.read = autofs_read;
+
+    autofs_oper.write = autofs_write;
+    autofs_oper.mknod = autofs_mknod;
+    autofs_oper.truncate = autofs_truncate;
 
     //openlog("nofs", LOG_CONS, LOG_USER);
 
@@ -190,10 +277,6 @@ int main(int argc, char *argv[])
         printf("not enough arguments!\n");
         exit(1);
     }
-
-    int major, minor, patch;
-    zmq_version (&major, &minor, &patch);
-    printf ("Current 0MQ version is %d.%d.%d\n", major, minor, patch);
 
     // Send protocol request
     /*const char *proto_info = "LOCAL";
@@ -203,7 +286,7 @@ int main(int argc, char *argv[])
 
     // TODO: just hardcode the needed arguments to FUSE
     // TODO: pass -s option (single-threaded)
-    int fuse_argc = 4;
-    char *fuse_argv[] = {argv[0], "-s", "-d", argv[2]};
-    return fuse_main(fuse_argc, fuse_argv, &nofs_oper, NULL);
+    int fuse_argc = 6;
+    char *fuse_argv[] = {argv[0], "-s", "-d", "-o", "daemon_timeout=5", argv[2]};
+    return fuse_main(fuse_argc, fuse_argv, &autofs_oper, NULL);
 }

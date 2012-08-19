@@ -1,16 +1,11 @@
 import pickle
 
-import proto.autofs_pb2 as pb2
+import autofs.protobuf.autofs_pb2 as pb2
 
-from autofs import tuneables, userconfig
-
-H_MTYPE = 0
-H_BINARYLEN = 1
-H_LEN = 2
+from autofs import tuneables, userconfig, network
 
 def read(fentry, length, offset):
-    from autofs import peer_responder
-    conns = peer_responder.get_connections()
+    conns = network.get_connections()
     if len(conns) == 0:
         print("No remote connections!")
         return None
@@ -50,15 +45,17 @@ def send_peer_announce(conn):
         
         conn.peer_announce_sent = True
 
-def handle_packet(conn, header, pbuf_blob, data_blob):
-    if header[H_MTYPE] == pb2.PEER_ANNOUNCE:
+def handle_packet(conn, packet):
+    header = packet.header
+
+    if header[network.H_MTYPE] == pb2.PEER_ANNOUNCE:
         send_peer_announce(conn)
 
-    elif header[H_MTYPE] == pb2.JOIN_CLUSTER:
+    elif header[network.H_MTYPE] == pb2.JOIN_CLUSTER:
         send_cluster_info(conn)
         send_peer_announce(conn)
     
-    elif header[H_MTYPE] == pb2.GET_BLOCKS:
+    elif header[network.H_MTYPE] == pb2.GET_BLOCKS:
         get_blocks = pb2.GetBlocks()
         get_blocks.ParseFromString(pbuf_blob)
         resp = pb2.BlocksData()
@@ -67,3 +64,5 @@ def handle_packet(conn, header, pbuf_blob, data_blob):
             resp.block_ids.append(b)
             data.extend(conn.inst.fs.blockdata(b))
         conn.send(pb2.BLOCKS_DATA, resp, data)
+
+    return False

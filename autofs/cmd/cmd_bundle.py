@@ -5,14 +5,15 @@ from autofs import fsindex
 
 def bundle(inst, dirpath):
     bname = os.path.basename(dirpath)
-    print("Creating new bundle {}".format(bname))
+    print("Creating new bundle \"{}\"".format(bname))
 
     bundle = inst.fi.newbundle(bname)
     index = bundle.newindex()
 
     for root, dirs, files in os.walk(dirpath):
         relroot = root[len(dirpath):]
-        root_entry = index.traverse(relroot)
+        root_entry = index.lookup(relroot)
+        assert root_entry.ftype == fsindex.DIR
 
         for d in dirs:
             # Create direntry
@@ -32,6 +33,8 @@ def bundle(inst, dirpath):
                 print("Error while reading file {}".format(fn))
                 continue
 
-            datapair = inst.fs.store(data)
-            entry = fsindex.FileEntry(name, datapair, len(data))
+            block_id = inst.fs.store(data)
+            entry = fsindex.FileEntry(name, block_id, len(data))
             root_entry.items[name] = entry
+
+    index.rebuild_dirs()

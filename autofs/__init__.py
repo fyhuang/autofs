@@ -2,10 +2,9 @@ import os.path
 import sys
 import signal
 
-from gevent_zeromq import zmq
 import gevent
 
-from autofs import userconfig, local, instance, peer_responder
+from autofs import userconfig, local, instance, network
 from autofs.cmd import cmd_bundle, cmd_join, cmd_list
 
 def main():
@@ -27,10 +26,8 @@ Commands:
     if command == 'serve':
         inst = instance.Instance.load(instance_path)
 
-        print("0MQ version: " + zmq.zmq_version())
-        ctx = zmq.Context()
         #ls = local.start_server(ctx, inst)
-        rs = peer_responder.start_server(inst)
+        rs = network.start_server(inst)
         #glets = [ls, rs]
         #gevent.joinall(glets)
         rs.join()
@@ -38,9 +35,8 @@ Commands:
     elif command == 'connect':
         # Client?
         inst = instance.Instance.load(instance_path)
-        ctx = zmq.Context()
-        ls = local.start_server(ctx, inst)
-        pf = peer_responder.find_peers(inst)
+        ls = local.start_server(inst)
+        pf = network.find_peers(inst)
         glets = [ls, pf]
         gevent.joinall(glets)
 
@@ -48,6 +44,7 @@ Commands:
 
     elif command == 'init':
         if not os.path.isdir(instance_path):
+            os.makedirs(instance_path)
             instance.Instance.create(instance_path)
         else:
             print("Instance already exists at {}".format(instance_path))
@@ -66,6 +63,7 @@ Commands:
             sys.exit(1)
 
         if not os.path.isdir(instance_path):
+            os.makedirs(instance_path)
             inst = instance.Instance.create(instance_path)
         else:
             inst = instance.Instance.load(instance_path)
@@ -78,6 +76,11 @@ Commands:
     elif sys.argv[1] == 'list':
         inst = instance.Instance.load(instance_path)
         cmd_list.list_items(inst)
+
+
+    else:
+        print("Unrecognized command {}".format(command))
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

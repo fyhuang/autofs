@@ -1,15 +1,23 @@
 package autofs_local;
 
 enum MessageType {
+    // Read operations
     REQ_STAT = 1;
     REQ_LISTDIR = 2;
     REQ_READ = 3;
+
+    // Write operations
+    REQ_WRITE = 4;
+    REQ_TRUNCATE = 5;
+    REQ_MKNOD = 6;
 
     RESP_ERROR = 0;
 
     RESP_STAT = 101;
     RESP_LISTDIR = 102;
     RESP_READ = 103;
+    
+    RESP_WRITE = 104;
 
 
     REQ_ADM_ADDFILE = 64;
@@ -40,13 +48,27 @@ message ReqRead {
     required uint64 length = 3;
 }
 
+message ReqWrite {
+    required string filepath = 1;
+    required uint64 offset = 2;
+}
+
+message ReqTruncate {
+    required string filepath = 1;
+    required uint64 newLength = 2;
+}
+
+message ReqMknod {
+    required string filepath = 1;
+}
+
 
 message RespStat {
     required int32 ftype = 1;
     required uint32 perms = 2;
     required uint32 inode = 3;
     required uint64 size = 4;
-    required fixed64 ctime_utc = 5;
+    required fixed64 mtime_utc = 5;
 }
 
 message RespListdir {
@@ -56,10 +78,6 @@ message RespListdir {
     }
 
     repeated ListdirEntry entries = 1;
-}
-
-message RespRead {
-    required bytes data = 1;
 }
 
 
