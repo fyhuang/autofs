@@ -197,7 +197,7 @@ def handle_read(pkt, inst, data_bytes):
                 f.seek(pkt.offset)
                 resp = f.read(pkt.length)
         else:
-            resp = remote.read(fentry, pkt.length, pkt.offset)
+            resp = remote.read(inst, fentry, pkt.length, pkt.offset)
             if resp is None:
                 return pb2.ERR_UNKNOWN
 

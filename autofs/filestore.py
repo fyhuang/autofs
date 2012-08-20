@@ -50,7 +50,7 @@ class FileStore(object):
     # Caching
     def cache(self, block_id, data):
         if not block_id in self:
-            self.store(data)
+            self.store(data, block_id)
 
             self.cached_objects.append(block_id)
             self.addref(block_id)
@@ -62,10 +62,9 @@ class FileStore(object):
             return True
         return False
 
-    def get_cached(self, block_id):
-        for bid in self.cached_objects:
-            if bid == block_id:
-                return bid
+    def is_cached(self, block_id):
+        if block_id in self.cached_objects:
+            return block_id 
         return None
             
 

@@ -5,7 +5,7 @@ import pickle
 import autofs.protobuf.autofs_pb2 as pb2
 from autofs import tuneables, userconfig, network
 
-def read(fentry, length, offset):
+def read(inst, fentry, length, offset):
     conns = network.get_connections()
     if len(conns) == 0:
         print("No remote connections!")
@@ -18,8 +18,11 @@ def read(fentry, length, offset):
     print("Reading {}".format(fentry.block_id))
     c.send(pb2.GET_BLOCKS, msg)
     result = c.get_result(pb2.BLOCKS_DATA)
+
+    # Cache the result locally
+    inst.fs.cache(fentry.block_id, result.data)
+
     return result.data[offset:offset+length]
-    # TODO: cache/store the result locally
 
 def send_cluster_info(conn):
     msg = pb2.ClusterInfo()
