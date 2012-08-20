@@ -1,3 +1,5 @@
+from __future__ import unicode_literals, print_function, absolute_import
+
 import struct
 import collections
 
@@ -8,7 +10,7 @@ import autofs.protobuf.autofs_pb2 as pb2
 from autofs import userconfig, debug
 
 # TODO: need larger size for packets
-HEADER_FMT = "<HLL"
+HEADER_FMT = b"<HLL"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 H_MTYPE = 0
@@ -176,7 +178,7 @@ connections = {}
 def start_server(inst):
     assert inst is not None
 
-    import remote
+    from autofs import remote
 
     def _handle(sock, addr):
         conn = PeerConnection(inst, sock, addr, remote.handle_packet)
@@ -197,6 +199,7 @@ def connect(inst, addr):
         connections[addr] = conn
 
     if inst is not None:
+        from autofs import remote
         remote.send_peer_announce(conn)
     return conn, conn.handle()
 

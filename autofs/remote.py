@@ -1,7 +1,8 @@
+from __future__ import unicode_literals, print_function, absolute_import
+
 import pickle
 
 import autofs.protobuf.autofs_pb2 as pb2
-
 from autofs import tuneables, userconfig, network
 
 def read(fentry, length, offset):

@@ -1,3 +1,5 @@
+from __future__ import unicode_literals, print_function, absolute_import
+
 import autofs.protobuf.autofs_pb2 as pb2
 import autofs.protobuf.autofs_local_pb2 as lpb2
 

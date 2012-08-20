@@ -1,3 +1,5 @@
+from __future__ import unicode_literals, print_function, absolute_import
+
 import unittest
 import tempfile
 import shutil
@@ -28,9 +30,12 @@ class TestPeerConnection(unittest.TestCase):
         bid3 = self.fs.store(data3)
         self.assertEqual(bid3, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
 
-        self.assertEqual(self.fs.blockdata(bid1), data1)
-        self.assertEqual(self.fs.blockdata(bid2), data2)
-        self.assertEqual(self.fs.blockdata(bid3), data3)
+        def blockdata(blockid):
+            with self.fs.blockfile(blockid) as f:
+                return f.read()
+        self.assertEqual(blockdata(bid1), data1)
+        self.assertEqual(blockdata(bid2), data2)
+        self.assertEqual(blockdata(bid3), data3)
 
     def test_cache(self):
         data1 = b'test1'

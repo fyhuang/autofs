@@ -1,3 +1,5 @@
+from __future__ import unicode_literals, print_function, absolute_import
+
 import stat
 import time
 import struct
@@ -12,7 +14,7 @@ from autofs import fsindex, debug, remote, tempindex
 
 import autofs.protobuf.autofs_local_pb2 as pb2
 
-HEADER_FMT = "=HLL"
+HEADER_FMT = b"=HLL"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 # Basic packet operations

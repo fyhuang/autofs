@@ -1,3 +1,5 @@
+from __future__ import unicode_literals, print_function, absolute_import
+
 import unittest
 from autofs import fsindex
 
@@ -11,7 +13,7 @@ class TestFilesystemIndex(unittest.TestCase):
         self.assertEqual(len(self.fsi.bundles), 2)
 
     def test_minimalcopy(self):
-        copy = self.fsi.minimal_copy()
+        copy = self.fsi.minimal_copy(None)
         for bid, b in copy.bundles.items():
             self.assertEqual(len(b.indexes), 2)
 
