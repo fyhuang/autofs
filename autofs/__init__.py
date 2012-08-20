@@ -19,9 +19,10 @@ Commands:
 \tbundle""")
         sys.exit(1)
 
-    command = sys.argv[1]
-    instance_path = os.path.realpath(sys.argv[2])
-    command_args = sys.argv[3:]
+    # TODO: unicode?
+    command = sys.argv[1].decode()
+    instance_path = os.path.realpath(sys.argv[2]).decode()
+    command_args = [s.decode() for s in sys.argv[3:]]
 
     gevent.signal(signal.SIGQUIT, gevent.shutdown)
 
