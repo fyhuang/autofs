@@ -16,5 +16,6 @@ setup(name='autofs',
 
       install_requires=[
           'protobuf',
+          'gevent',
           ],
       )
