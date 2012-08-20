@@ -31,7 +31,7 @@ def send_cluster_info(conn):
         entry.bundle_id = bid
         entry.latest_version = b.latest().version
 
-    index_blob = pickle.dumps(conn.inst.fi.minimal_copy())
+    index_blob = pickle.dumps(conn.inst.fi.minimal_copy(conn.inst.fs))
     conn.send(pb2.CLUSTER_INFO, msg, index_blob)
 
 def send_peer_announce(conn):
