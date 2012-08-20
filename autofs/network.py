@@ -2,7 +2,7 @@ import struct
 import collections
 
 import gevent
-from gevent import server, coros, queue, event
+from gevent import server, socket, coros, queue, event
 
 import autofs.protobuf.autofs_pb2 as pb2
 from autofs import userconfig, debug
@@ -92,7 +92,7 @@ class PeerConnection(object):
 
         def receiver():
             while True:
-                header_blob = self.sock.recv_exact(HEADER_SIZE)
+                header_blob = self.recv_exact(HEADER_SIZE)
                 if len(header_blob) == 0:
                     print("{} disconnected".format(self.remote_addr))
                     # TODO shutdown sender too
@@ -105,13 +105,13 @@ class PeerConnection(object):
 
                 print("Incoming: {}".format(debug.header_str(header)))
                 if header[H_BINARYLEN] == 0:
-                    pbuf_blob = self.sock.recv_exact(header[H_LEN])
+                    pbuf_blob = self.recv_exact(header[H_LEN])
                     data_blob = None
                 else:
                     binary_len = header[H_BINARYLEN]
                     pbuf_len = header[H_LEN] - binary_len
                     print("pbuf_len: {}".format(pbuf_len))
-                    pbuf_blob = self.sock.recv_exact(pbuf_len)
+                    pbuf_blob = self.recv_exact(pbuf_len)
                     print("received pbuf")
                     # TODO gevent.sleep(0)
                     data_blob = self.recv_exact(binary_len)
