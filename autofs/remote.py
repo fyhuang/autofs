@@ -54,8 +54,8 @@ def handle_packet(conn, packet):
         send_peer_announce(conn)
     
     elif header[network.H_MTYPE] == pb2.GET_BLOCKS:
-        get_blocks = pb2.GetBlocks()
-        get_blocks.ParseFromString(pbuf_blob)
+        get_blocks = packet.message
+
         resp = pb2.BlocksData()
         data = bytearray()
         for b in get_blocks.block_ids:
