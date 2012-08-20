@@ -35,6 +35,8 @@ class TempIndex(object):
         self.vi = vi
         self.temp_root = temp_root
         self.new_entries = {}
+        # TODO
+        self.renames = []
 
     def is_changed(self, path):
         return path in self.new_entries
@@ -56,6 +58,9 @@ class TempIndex(object):
         dir_entry = self.lookup(dirpath)
         assert dir_entry.ftype == fsindex.DIR
         dir_entry.items[new_entry.name] = new_entry
+
+        #if dirpath != '/':
+        #    self.modify_dir(ppath.dirname(dirpath), dir_entry)
 
     def get_datapath(self, filepath):
         datapath = os.path.abspath(os.path.join(self.temp_root, filepath.lstrip('/')))
@@ -103,10 +108,7 @@ class TempIndex(object):
             new_entry = TempFileEntry(bname, datapath)
 
         self.new_entries[path] = new_entry
-
-        parent_dir = self.modify(ppath.dirname(path), None)
-        assert parent_dir is not None
-        parent_dir.items[bname] = new_entry
+        self.modify_dir(ppath.dirname(path), new_entry)
 
         return new_entry
 

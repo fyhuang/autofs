@@ -132,8 +132,8 @@ static int autofs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     filler(buf, "..", NULL, 0);
 
     for (int i = 0; i < rl.entries_size(); i++) {
-        DBPRINTF("Reading entry %d\n", i);
         const RespListdir::ListdirEntry &entry = rl.entries(i);
+        DBPRINTF("Reading entry %d (%s)\n", i, entry.filename().c_str());
         filler(buf, entry.filename().c_str(), NULL, 0);
     }
 
@@ -255,11 +255,71 @@ static int autofs_truncate(const char *path, off_t new_size)
     return 0;
 }
 
+static int autofs_unlink(const char *path)
+{
+    DBPRINTF("unlink %s\n", path);
+
+    shared_data *sd = get_sd();
+    ReqUnlink req_unlink;
+    req_unlink.set_filepath(path);
+    send_packet(sd->sock, REQ_UNLINK, &req_unlink);
+
+    if (recv_packet(sd->sock, NULL, NULL) != ERR_NONE) {
+        return -EIO;
+    }
+    return 0;
+}
+
+static int autofs_rename(const char *old_path, const char *new_path)
+{
+    DBPRINTF("rename %s => %s\n", old_path, new_path);
+
+    shared_data *sd = get_sd();
+    ReqRename req_rename;
+    req_rename.set_old_path(old_path);
+    req_rename.set_new_path(new_path);
+    send_packet(sd->sock, REQ_RENAME, &req_rename);
+
+    if (recv_packet(sd->sock, NULL, NULL) != ERR_NONE) {
+        return -EIO;
+    }
+    return 0;
+}
+
+
+
+
+// These functions are emulated
+static int autofs_chmod(const char *path, mode_t mode)
+{
+    if (!(mode & S_IRUSR))
+        return -EINVAL;
+    return 0;
+}
+
+static int autofs_chown(const char *path, uid_t new_uid, gid_t new_gid)
+{
+    uid_t euid = geteuid();
+    uid_t ruid = getuid();
+    if (new_uid != (uid_t)-1 && new_uid != euid && new_uid != ruid) {
+        return -EINVAL;
+    }
+
+    gid_t egid = getegid();
+    gid_t rgid = getgid();
+    if (new_gid != (gid_t)-1 && new_gid != egid && new_gid != rgid) {
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 
 static struct fuse_operations autofs_oper;
 int main(int argc, char *argv[])
 {
     // Setup FUSE pointers
+    memset(&autofs_oper, 0, sizeof(fuse_operations));
     autofs_oper.init = autofs_init;
     autofs_oper.destroy = autofs_destroy;
     autofs_oper.getattr = autofs_getattr;
@@ -270,6 +330,11 @@ int main(int argc, char *argv[])
     autofs_oper.write = autofs_write;
     autofs_oper.mknod = autofs_mknod;
     autofs_oper.truncate = autofs_truncate;
+    autofs_oper.unlink = autofs_unlink;
+    autofs_oper.rename = autofs_rename;
+
+    autofs_oper.chmod = autofs_chmod;
+    autofs_oper.chown = autofs_chown;
 
     //openlog("nofs", LOG_CONS, LOG_USER);
 

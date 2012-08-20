@@ -1,6 +1,9 @@
 import stat
 import time
 import struct
+import copy
+import shutil
+import posixpath as ppath
 
 import gevent
 from gevent import server
@@ -106,6 +109,9 @@ def parse_filepath(raw_filepath):
     dp = raw_filepath.strip('/').partition('/')
     bundle_id = dp[0]
     filepath = dp[1] + dp[2]
+    if filepath == '':
+        filepath = '/'
+    print("bundle_id: {}, filepath: {}".format(bundle_id, filepath))
     return bundle_id, filepath
 
 def get_entry(inst, raw_filepath):
@@ -243,6 +249,52 @@ def handle_mknod(pkt, inst, data_bytes):
 
     return pb2.RESP_WRITE, None, None
 
+def handle_unlink(pkt, inst, data_bytes):
+    bundle_id, filepath = parse_filepath(pkt.filepath)
+    if bundle_id not in inst.fi.bundles:
+        return pb2.ERR_NOENT
+    bundle = inst.fi.bundles[bundle_id]
+
+    start_inflight(inst, bundle)
+    bundle.inflight.delete(filepath)
+
+    return pb2.RESP_WRITE, None, None
+
+def handle_rename(pkt, inst, data_bytes):
+    old_bundle_id, old_path = parse_filepath(pkt.old_path)
+    if old_bundle_id not in inst.fi.bundles:
+        return pb2.ERR_NOENT
+    old_bundle = inst.fi.bundles[bundle_id]
+
+    new_bundle_id, new_path = parse_filepath(pkt.new_path)
+    if new_bundle_id not in inst.fi.bundles:
+        return pb2.ERR_NOENT
+    new_bundle = inst.fi.bundles[bundle_id]
+
+    # TODO: record renames
+    start_inflight(inst, old_bundle)
+    old_entry = old_bundle.inflight.lookup(old_path)
+    if old_entry is None:
+        return pb2.ERR_NOENT
+
+    start_inflight(inst, new_bundle)
+    if new_bundle.inflight.lookup(new_path) is not None:
+        # Delete anything that was there before
+        new_bundle.inflight.delete(new_path)
+
+    new_entry = new_bundle.inflight.create(new_path, old_entry.ftype)
+    if new_entry is None:
+        return pb2.ERR_UNKNOWN
+
+    # Copy contents
+    new_entry.name = ppath.basename(new_path)
+    if new_entry.ftype == fsindex.DIR:
+        new_entry.items = copy.copy(old_entry.items)
+    else:
+        shutil.copyfile(old_entry.datapath, new_entry.datapath)
+
+    return pb2.RESP_WRITE, None, None
+
 
 mtype_to_types = {
         pb2.REQ_STAT: (pb2.ReqStat, handle_stat),
@@ -252,5 +304,7 @@ mtype_to_types = {
         pb2.REQ_WRITE: (pb2.ReqWrite, handle_write),
         pb2.REQ_TRUNCATE: (pb2.ReqTruncate, handle_truncate),
         pb2.REQ_MKNOD: (pb2.ReqMknod, handle_mknod),
+        pb2.REQ_UNLINK: (pb2.ReqUnlink, handle_unlink),
+        pb2.REQ_RENAME: (pb2.ReqRename, handle_rename),
         }
 

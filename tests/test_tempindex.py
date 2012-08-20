@@ -12,10 +12,6 @@ class TestTempIndex(unittest.TestCase):
         self.tempdir, self.inst = util.create_test_instance()
         self.bundle = self.inst.fi.bundles.values()[0]
 
-        print("bundle: {}".format(self.bundle.name))
-        for path, entry in self.bundle.latest().walk():
-            print(path, entry)
-
         self.ti = tempindex.TempIndex(os.path.join(self.tempdir, 'inflight_1'), self.bundle.latest())
         self.bundle.inflight = self.ti
 
@@ -35,7 +31,14 @@ class TestTempIndex(unittest.TestCase):
 
     def test_create(self):
         ti = self.ti
-        ti.create('/test2', fsindex.FILE)
+        ti.create('/test3', fsindex.FILE)
+
+        dir_entry = ti.lookup('/')
+        self.assertTrue('test3' in dir_entry.items)
+
+        for path, entry in dir_entry.items.items():
+            print(path, entry)
+
 
     def test_delete(self):
         ti = self.ti
