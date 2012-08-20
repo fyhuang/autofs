@@ -12,17 +12,14 @@ def read(fentry, length, offset):
         return None
     c = conns.values()[0]
 
-    if fentry.size < tuneables.PARTIAL_READ_FILESIZE:
-        msg = pb2.GetBlocks()
-        msg.block_ids.append(fentry.datapair[1])
-        print("Reading {}".format(fentry.datapair[1]))
-        c.send(pb2.GET_BLOCKS, msg)
-        result = c.get_result(pb2.BLOCKS_DATA)
-        return result[2][offset:offset+length]
-        # TODO: cache/store the result locally
-    else:
-        assert False
-        return None
+    #if fentry.size < tuneables.PARTIAL_READ_FILESIZE:
+    msg = pb2.GetBlocks()
+    msg.block_ids.append(fentry.block_id)
+    print("Reading {}".format(fentry.block_id))
+    c.send(pb2.GET_BLOCKS, msg)
+    result = c.get_result(pb2.BLOCKS_DATA)
+    return result.data[offset:offset+length]
+    # TODO: cache/store the result locally
 
 def send_cluster_info(conn):
     msg = pb2.ClusterInfo()
@@ -63,7 +60,8 @@ def handle_packet(conn, packet):
         data = bytearray()
         for b in get_blocks.block_ids:
             resp.block_ids.append(b)
-            data.extend(conn.inst.fs.blockdata(b))
+            with conn.inst.fs.blockfile(b) as f:
+                data.extend(f.read())
         conn.send(pb2.BLOCKS_DATA, resp, data)
 
     return False
